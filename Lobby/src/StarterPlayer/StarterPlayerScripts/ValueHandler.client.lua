@@ -18,22 +18,22 @@ local function toHMS(s)
 end
 
 local function updateGameLabel()
-    if Values.GameStatus.Value == "Round" then
-        GameUi.GameLabel.Text = 'Avoid the color <font color="rgb('.. ColorData[Values.CurrentColor.Value].ColorMap ..')"><b>' .. Values.CurrentColor.Value .. '</b></font> (' .. toHMS(Values.RoundTimer.Value) .. ')'
-    elseif Values.GameStatus.Value == "Picked" then
-        GameUi.GameLabel.Text = 'The color is <font color="rgb('.. ColorData[Values.CurrentColor.Value].ColorMap ..')"><b>' .. Values.CurrentColor.Value .. '</b></font> (' .. toHMS(Values.RoundTimer.Value) .. ')'
+    if Values.GameStatus.Value == "Picked" then
+        GameUi.TopBar.Status.Text = '<font color="rgb('.. ColorData[Values.PickedColor.Value].ColorMap ..')"><b>' .. Values.PickedColor.Value .. '</b></font> is being corrupted'
     elseif Values.GameStatus.Value == "Picking" then
-        GameUi.GameLabel.Text = 'Picking a new color... (' .. toHMS(Values.RoundTimer.Value) .. ')'
-    elseif Values.GameStatus.Value == "Intermission" then
-        GameUi.GameLabel.Text = 'Intermission... (' .. toHMS(Values.RoundTimer.Value) .. ')'
+        GameUi.TopBar.Status.Text = 'Corrupting a color...'
+    elseif Values.GameStatus.Value == "Round" then
+        GameUi.TopBar.Status.Text = 'Survive the corruption'
     end
+
+    GameUi.TopBar.Timer.Text = toHMS(Values.RoundTimer.Value)
 end
 
 Values.RoundTimer.Changed:Connect(function()
 	updateGameLabel()
 end)
 
-Values.CurrentColor.Changed:Connect(function()
+Values.PickedColor.Changed:Connect(function()
 	updateGameLabel()
 end)
 
