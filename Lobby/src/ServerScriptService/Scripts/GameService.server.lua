@@ -1,5 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local Values = ReplicatedStorage.Values
 local Assets = ReplicatedStorage.Assets
@@ -17,7 +17,6 @@ local Corruption = game.Lighting.Corruption
 
 local rng = Random.new()
 local corruptedColorList = {}
-local colorPartList = {}
 
 --------------------------------------------
 
@@ -102,8 +101,27 @@ local function getClosestColor(undefinedColor)
     return closest
 end
 
+local function randomMapPosition()
+    local x = Map:GetPivot().X + rng:NextInteger(-Map:GetExtentsSize().X/2, Map:GetExtentsSize().X/2)
+        local z = Map:GetPivot().Z + rng:NextInteger(-Map:GetExtentsSize().Z/2, Map:GetExtentsSize().Z/2)
+    local pos = Vector3.new(x, 10000, z)
+
+    local RayOrigin = pos
+    local RayDirection = Vector3.new(0, -10000, 0)
+
+    local Params = RaycastParams.new()
+    Params.FilterType = Enum.RaycastFilterType.Blacklist
+    --Params.FilterDescendantsInstances = {}
+
+    local Result = workspace:Raycast(RayOrigin, RayDirection, Params)
+    return Result
+end
+
 --------------------------------------------
 
+local corrupt
+
+local colorPartList = {}
 local function corruptMap(color, toggle)
     if not colorPartList[color] then
         colorPartList[color] = {}
@@ -133,56 +151,57 @@ local function corruptMap(color, toggle)
     end
 
     if toggle then
-        local x = Map:GetPivot().X + rng:NextInteger(-Map:GetExtentsSize().X/2, Map:GetExtentsSize().X/2)
-        local z = Map:GetPivot().Z + rng:NextInteger(-Map:GetExtentsSize().Z/2, Map:GetExtentsSize().Z/2)
-        local pos = Vector3.new(x, 10000, z)
-
-        local RayOrigin = pos
-        local RayDirection = Vector3.new(0, -10000, 0)
-
-        local Params = RaycastParams.new()
-        Params.FilterType = Enum.RaycastFilterType.Blacklist
-        --Params.FilterDescendantsInstances = {}
-
-        local Result = workspace:Raycast(RayOrigin, RayDirection, Params)
-
-        if Result then
+        local rmp = randomMapPosition()
+        if rmp then
             local corrupter = Assets.Corrupter:Clone()
-            corrupter:PivotTo(CFrame.new(Result.Position))
+            corrupter:PivotTo(CFrame.new(rmp.Position))
             corrupter.Color1.Color = ColorData[color].Color
             corrupter.Color2.Color = ColorData[color].Color
-            corrupter.Main.ProximityPrompt.ObjectText = "Cleanse " .. color
+            corrupter.Main.ProximityPrompt.ActionText = "Free " .. color
             corrupter.Parent = workspace
+
+            local proximityConnection
+            proximityConnection = ProximityPromptService.PromptTriggered:Connect(function(promptObject, player)
+                if promptObject == corrupter.Main.ProximityPrompt then
+                    proximityConnection:Disconnect()
+                    corrupter:Destroy()
+                    corrupt(color, false)
+                end
+            end)
         end
     end
 end
 
-local function corruptLighting()
-    local totalCorrupted = 0
-    for _,_ in pairs(corruptedColorList) do
-        totalCorrupted += 1
-    end
-
-    Corruption.Contrast = (General.MaxContrast/General.TotalColors) * totalCorrupted
-    Corruption.Saturation = (General.MaxSaturation/General.TotalColors) * totalCorrupted
-end
-
-local function corrupt(color, toggle)
+corrupt = function(color, toggle)
     if toggle then
         if not corruptedColorList[color] then
             corruptedColorList[color] = true
+            Values.Corruption.Value += 1
 
             corruptMap(color, toggle)
         end
     else
         if corruptedColorList[color] then
             corruptedColorList[color] = nil
+            Values.Corruption.Value -= 1
 
             corruptMap(color, toggle)
         end
     end
 
-    corruptLighting()
+    Corruption.Contrast = (General.MaxContrast/General.TotalColors) * Values.Corruption.Value
+    Corruption.Saturation = (General.MaxSaturation/General.TotalColors) * Values.Corruption.Value
+end
+
+--------------------------------------------
+
+local enemies = {}
+
+local function newEnemy()
+    local rmp = randomMapPosition()
+    if rmp then
+
+    end
 end
 
 --------------------------------------------
