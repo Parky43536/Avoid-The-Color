@@ -1,4 +1,6 @@
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local Values = ReplicatedStorage.Values
@@ -10,7 +12,10 @@ local ColorData = require(DataBase.ColorData)
 local Utility = ReplicatedStorage:WaitForChild("Utility")
 local General = require(Utility:WaitForChild("General"))
 
---------------------------------------------
+local Scripts = ServerScriptService:WaitForChild("Scripts")
+local EnemyService = require(Scripts:WaitForChild("EnemyService"))
+
+--Variables------------------------------------------
 
 local Map = workspace.Map
 local Corruption = game.Lighting.Corruption
@@ -18,28 +23,21 @@ local Corruption = game.Lighting.Corruption
 local rng = Random.new()
 local corruptedColorList = {}
 
---------------------------------------------
+--Corruption------------------------------------------
 
-local function countdown(countdownTime)
-    Values.RoundTimer.Value = countdownTime
-
-    for i = 1 , countdownTime do
-        task.wait(1)
-        Values.RoundTimer.Value -= 1
-    end
-end
+local corrupt
 
 local colorList = {}
 local function pickcolor()
     if not next(colorList) then
-        for key, value in pairs(ColorData) do
-            table.insert(colorList, {key = key, value = value})
+        for color, _ in pairs(ColorData) do
+            table.insert(colorList, color)
         end
     end
 
     local pickedColor
     for _ = 1 , General.TotalColors do
-        pickedColor = colorList[rng:NextInteger(1, #colorList)].key
+        pickedColor = colorList[rng:NextInteger(1, #colorList)]
 
         if corruptedColorList[pickedColor] then
             pickedColor = false
@@ -54,104 +52,36 @@ local function pickcolor()
     return pickedColor
 end
 
-local savedColors = {}
-local function getClosestColor(undefinedColor)
-    if savedColors[undefinedColor] then
-        return savedColors[undefinedColor]
-    end
-
-    local closest
-
-    local function compareToClosest(newColor)
-        local function runColor(color)
-            local colorVal = ColorData[color].Color
-            local avg = math.abs(colorVal.r - undefinedColor.r) + math.abs(colorVal.g - undefinedColor.g) + math.abs(colorVal.b - undefinedColor.b)
-
-            if ColorData[color].SubColors then
-                for _, subColor in pairs(ColorData[color].SubColors) do
-                    local subAvg = math.abs(subColor.r - undefinedColor.r) + math.abs(subColor.g - undefinedColor.g) + math.abs(subColor.b - undefinedColor.b)
-                    if subAvg < avg then
-                        avg = subAvg
-                    end
-                end
-            end
-
-            return avg
-        end
-
-        local avg1 = runColor(closest)
-        local avg2 = runColor(newColor)
-
-        if avg1 < avg2 then
-            return closest
-        else
-            return newColor
-        end
-    end
-
-    for color, value in pairs(ColorData) do
-        if not closest then
-            closest = color
-        else
-            closest = compareToClosest(color)
-        end
-    end
-
-    savedColors[undefinedColor] = closest
-    return closest
-end
-
-local function randomMapPosition()
-    local x = Map:GetPivot().X + rng:NextInteger(-Map:GetExtentsSize().X/2, Map:GetExtentsSize().X/2)
-        local z = Map:GetPivot().Z + rng:NextInteger(-Map:GetExtentsSize().Z/2, Map:GetExtentsSize().Z/2)
-    local pos = Vector3.new(x, 10000, z)
-
-    local RayOrigin = pos
-    local RayDirection = Vector3.new(0, -10000, 0)
-
-    local Params = RaycastParams.new()
-    Params.FilterType = Enum.RaycastFilterType.Blacklist
-    --Params.FilterDescendantsInstances = {}
-
-    local Result = workspace:Raycast(RayOrigin, RayDirection, Params)
-    return Result
-end
-
---------------------------------------------
-
-local corrupt
-
-local colorPartList = {}
 local function corruptMap(color, toggle)
-    if not colorPartList[color] then
-        colorPartList[color] = {}
-
-        for _, part in pairs(Map:GetDescendants()) do
-            if part:IsA("BasePart") and getClosestColor(part.Color) == color then
-                table.insert(colorPartList[color], part)
-            end
-        end
-    end
-
-    for _, part in pairs(colorPartList[color]) do
+    for _, part in pairs(CollectionService:GetTagged(color)) do
         if toggle then
-            local corruptionParticles = Assets.Corruption:Clone()
-            for _, particles in pairs(corruptionParticles:GetChildren()) do
-                particles.Rate = part.Size.Magnitude / 10 + rng:NextNumber(-0.05, 0.05)
-                particles.Parent = part
-            end
-            corruptionParticles:Destroy()
-        else
-            for _, particles in pairs(part:GetChildren()) do
-                if particles:IsA("ParticleEmitter") then
-                    particles:Destroy()
+            part.Color = part.Color:Lerp(Color3.fromRGB(0, 0, 0), 0.25)
+
+            local corruptionEffects = Assets.Corruption:Clone()
+            for _, corruptionEffect in pairs(corruptionEffects:GetChildren()) do
+                if corruptionEffect:IsA("ParticleEmitter") then
+                    corruptionEffect.Rate = part.Size.Magnitude / 10 + rng:NextNumber(-0.05, 0.05)
+                    corruptionEffect.Parent = part
+                elseif corruptionEffect:IsA("Texture") then
+                    corruptionEffect.Parent = part
                 end
+            end
+
+            CollectionService:AddTag(part, "Corrupted")
+            corruptionEffects:Destroy()
+        else
+            for _, corruptionEffect in pairs(part:GetChildren()) do
+                if corruptionEffect:IsA("ParticleEmitter") or corruptionEffect:IsA("Texture") then
+                    corruptionEffect:Destroy()
+                end
+
+                CollectionService:RemoveTag(part, "Corrupted")
             end
         end
     end
 
     if toggle then
-        local rmp = randomMapPosition()
+        local rmp = General:RandomMapPosition()
         if rmp then
             local corrupter = Assets.Corrupter:Clone()
             corrupter:PivotTo(CFrame.new(rmp.Position))
@@ -193,38 +123,24 @@ corrupt = function(color, toggle)
     Corruption.Saturation = (General.MaxSaturation/General.TotalColors) * Values.Corruption.Value
 end
 
---------------------------------------------
+--Main Loop------------------------------------------
 
-local enemies = {}
+while true do
+    Values.GameStatus.Value = "Picking"
+    General:Countdown(General.PickingTimer)
 
-local function newEnemy()
-    local rmp = randomMapPosition()
-    if rmp then
+    local pickedColor = pickcolor()
+    if pickedColor then
+        Values.GameStatus.Value = "Picked"
+        General:Countdown(General.PickedTimer)
 
+        Values.GameStatus.Value = "Round"
+
+        corrupt(pickedColor, true)
+    else
+        --kill everyone after some time if all the colors are still corrupted
     end
+
+    General:Countdown(General.RoundTimer)
 end
 
---------------------------------------------
-
-task.spawn(function()
-    while true do
-        Values.GameStatus.Value = "Picking"
-        countdown(General.PickingTimer)
-
-        local pickedColor = pickcolor()
-        if pickedColor then
-            Values.GameStatus.Value = "Picked"
-            countdown(General.PickedTimer)
-
-            Values.GameStatus.Value = "Round"
-
-            corrupt(pickedColor, true)
-        else
-            --display all colors are corrupted
-        end
-
-        countdown(General.RoundTimer)
-    end
-
-    --enemy spawner on corrupted parts
-end)
